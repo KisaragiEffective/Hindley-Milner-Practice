@@ -45,8 +45,78 @@ enum Type {
     TypeVar(Ident),
 }
 
-fn infer(def: Def) -> Result<TypeContext, ()> {
-    todo!()
+#[derive(Hash, Eq, PartialEq, Clone, Debug)]
+enum TypeInferError {
+    Conflicted,
+    UnableToUnify(String),
+}
+
+fn infer(def: Def) -> Result<TypeContext, TypeInferError> {
+    let mut ctx = TypeContext {
+        map: Default::default()
+    };
+
+    let Def { lhs, rhs } = def;
+    match rhs {
+        Term::True => {
+            ctx.map.insert(lhs, Type::Bool);
+        }
+        Term::False => {
+            ctx.map.insert(lhs, Type::Bool);
+        }
+        Term::Not => {
+            panic!("AST is ill-formed");
+        }
+        Term::Ident(var_name) => {
+            ctx.map.insert(lhs, ctx.map.iter().find(|(t, _)| (*t).clone() == var_name).unwrap().1.clone());
+        }
+        Term::Call { .. } => {
+            todo!("Not supported yet");
+        }
+        Term::Lambda { param, body } => {
+            match *body {
+                Term::True => {
+                    ctx.map.insert(param, Type::ForAll {
+                        var_ident: Ident("a".to_string()),
+                        tp: Box::new(Type::Bool),
+                    });
+                }
+                Term::False => {
+                    ctx.map.insert(param, Type::ForAll {
+                        var_ident: Ident("a".to_string()),
+                        tp: Box::new(Type::Bool),
+                    });
+                }
+                Term::Not => {
+                    panic!("AST is ill-formed");
+                }
+                Term::Call { .. } => {
+                    todo!("Not supported yet");
+                }
+                Term::Lambda { .. } => {
+                    todo!("Not supported yet");
+                }
+                Term::Ident(body_var) => {
+                    // is `a -> a`?
+                    let lambda_tp = if param == body_var {
+                        Type::ForAll {
+                            var_ident: Ident("a".to_string()),
+                            tp: Box::new(Type::TypeVar(Ident("a".to_string())))
+                        }
+                    } else {
+                        Type::ForAll {
+                            var_ident: Ident("a".to_string()),
+                            tp: Box::new(ctx.map.iter().find(|(vn, _)| (*vn).clone() == body_var).unwrap().1.clone())
+                        }
+                    };
+
+                    ctx.map.insert(param, lambda_tp);
+                }
+            }
+        }
+    };
+
+    Ok(ctx)
 }
 
 #[test]
