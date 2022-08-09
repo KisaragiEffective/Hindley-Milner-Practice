@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use serde::Deserialize;
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 struct Ident(String);
@@ -15,8 +14,14 @@ enum Term {
     True,
     False,
     Not,
-    Call(Box<Term>, Box<Term>),
-    Lambda(Ident, Box<Term>),
+    Call {
+        f: Box<Term>,
+        ret: Box<Term>,
+    },
+    Lambda {
+        param: Ident,
+        body: Box<Term>,
+    },
     Ident(Ident),
 }
 
@@ -27,11 +32,12 @@ fn main() {
     println!("Hello, world!");
 }
 
-#[derive(Hash, Eq, PartialEq, Clone, Debug)]
+#[derive(Eq, PartialEq, Clone, Debug)]
 struct TypeContext {
     map: HashMap<Ident, Type>
 }
 
+#[derive(Hash, Eq, PartialEq, Clone, Debug)]
 enum Type {
     Bool,
     Lambda {
@@ -119,92 +125,97 @@ fn infer(def: Def) -> Result<TypeContext, TypeInferError> {
     Ok(ctx)
 }
 
-#[test]
-fn test_pass_1() {
-    // in: x = false
-    // out: x: Bool
-    let def = Def {
-        lhs: Ident("x".to_string()),
-        rhs: Term::False,
-    };
+#[cfg(test)]
+mod tests {
+    use crate::*;
 
-    assert_eq!(infer(def).unwrap().map.get(&Ident("x".to_string())), Type::Bool);
-}
+    #[test]
+    fn test_pass_1() {
+        // in: x = false
+        // out: x: Bool
+        let def = Def {
+            lhs: Ident("x".to_string()),
+            rhs: Term::False,
+        };
 
-#[test]
-fn test_pass_2() {
-    // in: w = v -> not(v)
-    let def = Def {
-        lhs: Ident("w".to_string()),
-        rhs: Term::Lambda(
-            Ident("v".to_string()),
-            Box::new(Term::Call(
-                Box::new(Term::Not),
-                Box::new(Term::Ident(Ident("v".to_string())))
-            ))
-        )
-    };
+        assert_eq!(infer(def).unwrap().map.get(&Ident("x".to_string())).unwrap(), &Type::Bool);
+    }
 
-    // out: w: Bool -> Bool
-    assert_eq!(infer(def).unwrap().map.get(&Ident("w".to_string())), Type::Lambda {
-        arg: Box::new(Type::Bool),
-        ret: Box::new(Type::Bool)
-    });
-}
+    #[test]
+    fn test_pass_2() {
+        // in: w = v -> not(v)
+        let def = Def {
+            lhs: Ident("w".to_string()),
+            rhs: Term::Lambda {
+                param: Ident("v".to_string()),
+                body: Box::new(Term::Call {
+                    f: Box::new(Term::Not),
+                    ret: Box::new(Term::Ident(Ident("v".to_string())))
+                }),
+            }
+        };
 
-#[test]
-fn test_pass_3() {
-    // in: y = u -> true
-    let def = Def {
-        lhs: Ident("y".to_string()),
-        rhs: Term::Lambda(
-            Ident("u".to_string()),
-            Box::new(Term::True)
-        )
-    };
-
-    // out: y: forall a. a -> Bool
-    assert_eq!(infer(def).unwrap().map.get(&Ident("y".to_string())), Type::ForAll {
-        var_ident: Ident("a".to_string()),
-        tp: Box::new(Type::Lambda {
-            arg: Box::new(Type::TypeVar(Ident("a".to_string()))),
+        // out: w: Bool -> Bool
+        assert_eq!(infer(def).unwrap().map.get(&Ident("w".to_string())).unwrap(), &Type::Lambda {
+            arg: Box::new(Type::Bool),
             ret: Box::new(Type::Bool)
-        }),
-    });
-}
+        });
+    }
 
-#[test]
-fn test_pass_4() {
-    // in: z = v -> v
-    let def = Def {
-        lhs: Ident("z".to_string()),
-        rhs: Term::Lambda(
-            Ident("v".to_string()),
-            Box::new(Term::Ident(Ident("v".to_string())))
-        )
-    };
+    #[test]
+    fn test_pass_3() {
+        // in: y = u -> true
+        let def = Def {
+            lhs: Ident("y".to_string()),
+            rhs: Term::Lambda {
+                param: Ident("u".to_string()),
+                body: Box::new(Term::True)
+            }
+        };
 
-    // out: z: forall a. a -> a
-    assert_eq!(infer(def).unwrap().map.get(&Ident("y".to_string())), Type::ForAll {
-        var_ident: Ident("a".to_string()),
-        tp: Box::new(Type::Lambda {
-            arg: Box::new(Type::TypeVar(Ident("a".to_string()))),
-            ret: Box::new(Type::TypeVar(Ident("a".to_string())))
-        }),
-    });
-}
+        // out: y: forall a. a -> Bool
+        assert_eq!(infer(def).unwrap().map.get(&Ident("y".to_string())).unwrap(), &Type::ForAll {
+            var_ident: Ident("a".to_string()),
+            tp: Box::new(Type::Lambda {
+                arg: Box::new(Type::TypeVar(Ident("a".to_string()))),
+                ret: Box::new(Type::Bool)
+            }),
+        });
+    }
 
-#[test]
-fn test_fail_1() {
-    // in: x = false(true)
-    let def = Def {
-        lhs: Ident("x".to_string()),
-        rhs: Term::Call(
-            Box::new(Term::False),
-            Box::new(Term::True),
-        )
-    };
+    #[test]
+    fn test_pass_4() {
+        // in: z = v -> v
+        let def = Def {
+            lhs: Ident("z".to_string()),
+            rhs: Term::Lambda {
+                param: Ident("v".to_string()),
+                body: Box::new(Term::Ident(Ident("v".to_string())))
+            }
+        };
 
-    // out: TypeError: `Bool` cannot be unified with `a -> b`
-    assert!(infer(def).is_err());
+        // out: z: forall a. a -> a
+        assert_eq!(infer(def).unwrap().map.get(&Ident("y".to_string())).unwrap(), &Type::ForAll {
+            var_ident: Ident("a".to_string()),
+            tp: Box::new(Type::Lambda {
+                arg: Box::new(Type::TypeVar(Ident("a".to_string()))),
+                ret: Box::new(Type::TypeVar(Ident("a".to_string())))
+            }),
+        });
+    }
+
+    #[test]
+    fn test_fail_1() {
+        // in: x = false(true)
+        let def = Def {
+            lhs: Ident("x".to_string()),
+            rhs: Term::Call {
+                f: Box::new(Term::False),
+                ret: Box::new(Term::True),
+            }
+        };
+
+        // out: TypeError: `Bool` cannot be unified with `a -> b`
+        assert!(infer(def).is_err());
+    }
 }
