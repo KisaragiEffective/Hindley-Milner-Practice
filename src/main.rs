@@ -37,6 +37,16 @@ struct TypeContext {
     map: HashMap<Ident, Type>
 }
 
+impl TypeContext {
+    fn get(&self, ident: &Ident) -> Option<&Type> {
+        self.map.get(ident)
+    }
+
+    fn add(&mut self, ident: Ident, tp: Type) {
+        self.map.insert(ident, tp);
+    }
+}
+
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 enum Type {
     Bool,
@@ -65,16 +75,16 @@ fn infer(def: Def) -> Result<TypeContext, TypeInferError> {
     let Def { lhs, rhs } = def;
     match rhs {
         Term::True => {
-            ctx.map.insert(lhs, Type::Bool);
+            ctx.add(lhs, Type::Bool);
         }
         Term::False => {
-            ctx.map.insert(lhs, Type::Bool);
+            ctx.add(lhs, Type::Bool);
         }
         Term::Not => {
             panic!("AST is ill-formed");
         }
         Term::Ident(var_name) => {
-            ctx.map.insert(lhs, ctx.map.iter().find(|(t, _)| (*t).clone() == var_name).unwrap().1.clone());
+            ctx.add(lhs, ctx.map.iter().find(|(t, _)| (*t).clone() == var_name).unwrap().1.clone());
         }
         Term::Call { f, ret } => {
             match *f {
@@ -82,10 +92,10 @@ fn infer(def: Def) -> Result<TypeContext, TypeInferError> {
                 Term::Not => {
                     match *ret {
                         Term::True => {
-                            ctx.map.insert(lhs, Type::Bool);
+                            ctx.add(lhs, Type::Bool);
                         }
                         Term::False => {
-                            ctx.map.insert(lhs, Type::Bool);
+                            ctx.add(lhs, Type::Bool);
                         }
                         Term::Not => panic!("AST is ill-formed (call.not.not)"),
                         Term::Call { .. } => todo!("not supported yet"),
@@ -103,13 +113,13 @@ fn infer(def: Def) -> Result<TypeContext, TypeInferError> {
         Term::Lambda { param, body } => {
             match *body {
                 Term::True => {
-                    ctx.map.insert(param, Type::ForAll {
+                    ctx.add(param, Type::ForAll {
                         var_ident: Ident("a".to_string()),
                         tp: Box::new(Type::Bool),
                     });
                 }
                 Term::False => {
-                    ctx.map.insert(param, Type::ForAll {
+                    ctx.add(param, Type::ForAll {
                         var_ident: Ident("a".to_string()),
                         tp: Box::new(Type::Bool),
                     });
@@ -137,7 +147,7 @@ fn infer(def: Def) -> Result<TypeContext, TypeInferError> {
                         }
                     };
 
-                    ctx.map.insert(param, lambda_tp);
+                    ctx.add(param, lambda_tp);
                 }
             }
         }
@@ -159,7 +169,7 @@ mod tests {
             rhs: Term::False,
         };
 
-        assert_eq!(infer(def).unwrap().map.get(&Ident("x".to_string())).unwrap(), &Type::Bool);
+        assert_eq!(infer(def).unwrap().get(&Ident("x".to_string())).unwrap(), &Type::Bool);
     }
 
     #[test]
@@ -177,7 +187,7 @@ mod tests {
         };
 
         // out: w: Bool -> Bool
-        assert_eq!(infer(def).unwrap().map.get(&Ident("w".to_string())).unwrap(), &Type::Lambda {
+        assert_eq!(infer(def).unwrap().get(&Ident("w".to_string())).unwrap(), &Type::Lambda {
             arg: Box::new(Type::Bool),
             ret: Box::new(Type::Bool)
         });
@@ -195,7 +205,7 @@ mod tests {
         };
 
         // out: y: forall a. a -> Bool
-        assert_eq!(infer(def).unwrap().map.get(&Ident("y".to_string())).unwrap(), &Type::ForAll {
+        assert_eq!(infer(def).unwrap().get(&Ident("y".to_string())).unwrap(), &Type::ForAll {
             var_ident: Ident("a".to_string()),
             tp: Box::new(Type::Lambda {
                 arg: Box::new(Type::TypeVar(Ident("a".to_string()))),
@@ -216,7 +226,7 @@ mod tests {
         };
 
         // out: z: forall a. a -> a
-        assert_eq!(infer(def).unwrap().map.get(&Ident("y".to_string())).unwrap(), &Type::ForAll {
+        assert_eq!(infer(def).unwrap().get(&Ident("y".to_string())).unwrap(), &Type::ForAll {
             var_ident: Ident("a".to_string()),
             tp: Box::new(Type::Lambda {
                 arg: Box::new(Type::TypeVar(Ident("a".to_string()))),
