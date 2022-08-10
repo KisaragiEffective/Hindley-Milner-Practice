@@ -76,8 +76,29 @@ fn infer(def: Def) -> Result<TypeContext, TypeInferError> {
         Term::Ident(var_name) => {
             ctx.map.insert(lhs, ctx.map.iter().find(|(t, _)| (*t).clone() == var_name).unwrap().1.clone());
         }
-        Term::Call { .. } => {
-            todo!("Not supported yet");
+        Term::Call { f, ret } => {
+            match *f {
+                Term::Ident(_) => todo!("not yet supported (call.ident)"),
+                Term::Not => {
+                    match *ret {
+                        Term::True => {
+                            ctx.map.insert(lhs, Type::Bool);
+                        }
+                        Term::False => {
+                            ctx.map.insert(lhs, Type::Bool);
+                        }
+                        Term::Not => panic!("AST is ill-formed (call.not.not)"),
+                        Term::Call { .. } => todo!("not supported yet"),
+                        Term::Ident(_) => todo!("not supported yet (call.not.ident)"),
+                        other_term => {
+                            return Err(TypeInferError::UnableToUnify(format!("{other_term:?} is not an function, and thus cannot be called")))
+                        }
+                    }
+                }
+                other_term => {
+                    return Err(TypeInferError::UnableToUnify(format!("{other_term:?} is not an function, and thus cannot be called")))
+                }
+            }
         }
         Term::Lambda { param, body } => {
             match *body {
